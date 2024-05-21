@@ -1,48 +1,77 @@
+import os
 import click
 import json
+from datetime import datetime
 from pathlib import Path
 
 
-def add_student(students, full_name, group_number, grades):
+def get_home_directory():
     """
-    Добавить данные о студенте.
+    Получить домашний каталог пользователя.
     """
-    grades = [float(grade) for grade in grades.split()]
-    student = {
+    return Path.home()
+
+
+def get_filename(filename_option):
+    """
+    Получить имя файла из переменной окружения, из командной строки или использовать файл в домашнем каталоге.
+    """
+    filename_env = os.getenv("PEOPLE_FILE")
+    if filename_option:
+        return Path(filename_option)
+    elif filename_env:
+        return Path(filename_env)
+    else:
+        return get_home_directory() / "people.json"
+
+
+def add_person(people, full_name, birth_date, phone_number):
+    """
+    Добавить данные о человеке.
+    """
+    person = {
         "full_name": full_name,
-        "group_number": group_number,
-        "grades": grades,
+        "birth_date": birth_date,
+        "phone_number": phone_number,
     }
-    students.append(student)
-    students.sort(key=lambda item: item.get("group_number", ""))
+    people.append(person)
+    people.sort(key=lambda item: datetime.strptime(item["birth_date"], "%Y-%m-%d"))
 
 
-def list_students(students):
+def list_people(people):
     """
-    Вывести список студентов.
+    Вывести список людей.
     """
-    line = "+-{}-+-{}-+-{}-+".format("-" * 30, "-" * 15, "-" * 20)
+    line = "+-{}-+-{}-+-{}-+".format("-" * 30, "-" * 15, "-" * 15)
     click.echo(line)
     click.echo(
-        "| {:^30} | {:^15} | {:^20} |".format("Ф.И.О.", "Номер группы", "Успеваемость")
+        "| {:^30} | {:^15} | {:^15} |".format("Ф.И.О.", "Дата рождения", "Телефон")
     )
     click.echo(line)
-    for student in students:
-        average_grade = sum(student.get("grades", 0)) / len(student.get("grades", 1))
-        if average_grade > 4.0:
-            click.echo(
-                "| {:<30} | {:<15} | {:<20} |".format(
-                    student.get("full_name", ""),
-                    student.get("group_number", ""),
-                    ", ".join(map(str, student.get("grades", []))),
-                )
+    for person in people:
+        click.echo(
+            "| {:<30} | {:<15} | {:<15} |".format(
+                person.get("full_name", ""),
+                person.get("birth_date", ""),
+                person.get("phone_number", ""),
             )
+        )
     click.echo(line)
+
+
+def find_person_by_phone(people, phone_number):
+    """
+    Найти человека по номеру телефона.
+    """
+    for person in people:
+        if person.get("phone_number") == phone_number:
+            return person
+    return None
 
 
 def save_to_json(filepath, data):
     """
-    Сохранить всех студентов в файл JSON.
+    Сохранить всех людей в файл JSON.
     """
     with filepath.open("w", encoding="utf-8") as file:
         json.dump(data, file, ensure_ascii=False, indent=4)
@@ -50,7 +79,7 @@ def save_to_json(filepath, data):
 
 def load_from_json(filepath):
     """
-    Загрузить всех студентов из файла JSON.
+    Загрузить всех людей из файла JSON.
     """
     try:
         if filepath.exists():
@@ -72,31 +101,47 @@ def cli():
 
 
 @cli.command()
-@click.option("-f", "--filename", required=True, help="The data file name")
-@click.option("-n", "--name", required=True, help="The student's full name")
-@click.option("-g", "--group", required=True, help="The student's group number")
-@click.option("-r", "--grades", required=True, help="The student's grades")
-def add(filename, name, group, grades):
+@click.option("-f", "--filename", help="The data file name")
+@click.option("-n", "--name", required=True, help="The person's full name")
+@click.option("-b", "--birthdate", required=True, help="The person's birth date (YYYY-MM-DD)")
+@click.option("-p", "--phone", required=True, help="The person's phone number")
+def add(filename, name, birthdate, phone):
     """
-    Add a new student.
+    Add a new person.
     """
-    home_dir = Path.home()
-    filepath = home_dir / filename
-    students = load_from_json(filepath)
-    add_student(students, name, group, grades)
-    save_to_json(filepath, students)
+    filepath = get_filename(filename)
+    people = load_from_json(filepath)
+    add_person(people, name, birthdate, phone)
+    save_to_json(filepath, people)
 
 
 @cli.command()
-@click.option("-f", "--filename", required=True, help="The data file name")
+@click.option("-f", "--filename", help="The data file name")
 def display(filename):
     """
-    Display all students.
+    Display all people.
     """
-    home_dir = Path.home()
-    filepath = home_dir / filename
-    students = load_from_json(filepath)
-    list_students(students)
+    filepath = get_filename(filename)
+    people = load_from_json(filepath)
+    list_people(people)
+
+
+@cli.command()
+@click.option("-f", "--filename", help="The data file name")
+@click.option("-p", "--phone", required=True, help="The person's phone number")
+def find(filename, phone):
+    """
+    Find a person by phone number.
+    """
+    filepath = get_filename(filename)
+    people = load_from_json(filepath)
+    person = find_person_by_phone(people, phone)
+    if person:
+        click.echo(f"Ф.И.О.: {person['full_name']}")
+        click.echo(f"Дата рождения: {person['birth_date']}")
+        click.echo(f"Телефон: {person['phone_number']}")
+    else:
+        click.echo(f"Человек с номером телефона {phone} не найден.")
 
 
 if __name__ == "__main__":
